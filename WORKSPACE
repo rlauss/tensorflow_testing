@@ -95,3 +95,11 @@ new_http_archive(
         "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )
+
+# opencv
+new_local_repository(
+    name = "opencv",
+    path = "/usr/local",
+    build_file = "/home/tf/Desktop/tensorflow/tensorflow/examples/label_image/opencv.BUILD",
+)
+

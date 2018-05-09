@@ -58,12 +58,21 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/command_line_flags.h"
 
+// opencv stuff
+#include "opencv2/opencv.hpp"
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/videoio.hpp>
+#include <opencv2/highgui.hpp>
+
 // These are all common classes it's handy to reference with no namespace.
 using tensorflow::Flag;
 using tensorflow::Tensor;
 using tensorflow::Status;
 using tensorflow::string;
 using tensorflow::int32;
+
+using namespace cv;
+VideoCapture cap;
 
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
@@ -230,7 +239,8 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
 // Given the output of a model run, and the name of a file containing the labels
 // this prints out the top five highest-scoring values.
 Status PrintTopLabels(const std::vector<Tensor>& outputs,
-                      const string& labels_file_name) {
+                      const string& labels_file_name, Mat& mat) {
+	std::string label_string;
   std::vector<string> labels;
   size_t label_count;
   Status read_labels_status =
@@ -249,7 +259,11 @@ Status PrintTopLabels(const std::vector<Tensor>& outputs,
     const int label_index = indices_flat(pos);
     const float score = scores_flat(pos);
     LOG(INFO) << labels[label_index] << " (" << label_index << "): " << score;
+		label_string = labels[label_index] + ": " + std::to_string(score);
+		putText(mat, label_string, Point2f(10, 350 + (pos * 25)), FONT_HERSHEY_DUPLEX, 1, Scalar(0, 0, 255, 255), 1);
   }
+	LOG(INFO) << "";
+
   return Status::OK();
 }
 
@@ -329,50 +343,104 @@ int main(int argc, char* argv[]) {
     return -1;
   }
 
-  // Get the image from disk as a float array of numbers, resized and normalized
-  // to the specifications the main graph expects.
-  std::vector<Tensor> resized_tensors;
-  string image_path = tensorflow::io::JoinPath(root_dir, image);
-  Status read_tensor_status =
-      ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
-                              input_std, &resized_tensors);
-  if (!read_tensor_status.ok()) {
-    LOG(ERROR) << read_tensor_status;
-    return -1;
-  }
-  const Tensor& resized_tensor = resized_tensors[0];
+  // opencv stuff
+	/* init video capture */
+	cap.open(0);
 
-  // Actually run the image through the model.
-  std::vector<Tensor> outputs;
-  Status run_status = session->Run({{input_layer, resized_tensor}},
-                                   {output_layer}, {}, &outputs);
-  if (!run_status.ok()) {
-    LOG(ERROR) << "Running model failed: " << run_status;
-    return -1;
-  }
+	/* check if we succeeded */
+	if(!cap.isOpened()) {
+		LOG(ERROR) << "VideoCapture not opened\n";
+		return -1;
+	}
 
-  // This is for automated testing to make sure we get the expected result with
-  // the default settings. We know that label 653 (military uniform) should be
-  // the top label for the Admiral Hopper image.
-  if (self_test) {
-    bool expected_matches;
-    Status check_status = CheckTopLabel(outputs, 653, &expected_matches);
-    if (!check_status.ok()) {
-      LOG(ERROR) << "Running check failed: " << check_status;
-      return -1;
-    }
-    if (!expected_matches) {
-      LOG(ERROR) << "Self-test failed!";
-      return -1;
-    }
-  }
+	while (1) {
+  	Mat frame;
 
-  // Do something interesting with the results we've generated.
-  Status print_status = PrintTopLabels(outputs, labels);
-  if (!print_status.ok()) {
-    LOG(ERROR) << "Running print failed: " << print_status;
-    return -1;
-  }
+  	/* read frame */
+  	cap.read(frame);
+
+  	if( frame.empty() ) {
+    	LOG(ERROR) << "No captured frame\n";
+    	return -1;
+  	}
+
+		//Mat output;
+		//frame.convertTo(output, CV_8U);
+		//Mat Result;
+		//cvtColor(output, Result, CV_BGRA2BGR);
+#if 1
+		imshow( "Test", frame );
+		char key = (char)waitKey(30); //delay N millis, usually long enough to display and capture input
+		switch (key) {
+			case 'q':
+			case 'Q':
+			case 27: //escape key
+				return 0;
+			case ' ': //analyse image
+			{
+#endif
+				// write image
+				imwrite("tmp.bmp", frame);
+				string image_path = "tmp.bmp";
+
+				// Get the image from disk as a float array of numbers, resized and normalized
+				// to the specifications the main graph expects.
+				std::vector<Tensor> resized_tensors;
+				//string image_path = tensorflow::io::JoinPath(root_dir, image);
+				Status read_tensor_status =
+						ReadTensorFromImageFile(image_path, input_height, input_width, input_mean,
+						                        input_std, &resized_tensors);
+				if (!read_tensor_status.ok()) {
+					LOG(ERROR) << read_tensor_status;
+					return -1;
+				}
+				const Tensor& resized_tensor = resized_tensors[0];
+
+				// Actually run the image through the model.
+				std::vector<Tensor> outputs;
+				Status run_status = session->Run({{input_layer, resized_tensor}},
+						                             {output_layer}, {}, &outputs);
+				if (!run_status.ok()) {
+					LOG(ERROR) << "Running model failed: " << run_status;
+					return -1;
+				}
+
+				// This is for automated testing to make sure we get the expected result with
+				// the default settings. We know that label 653 (military uniform) should be
+				// the top label for the Admiral Hopper image.
+				if (self_test) {
+					bool expected_matches;
+					Status check_status = CheckTopLabel(outputs, 653, &expected_matches);
+					if (!check_status.ok()) {
+						LOG(ERROR) << "Running check failed: " << check_status;
+						return -1;
+					}
+					if (!expected_matches) {
+						LOG(ERROR) << "Self-test failed!";
+						return -1;
+					}
+				}
+
+				// Do something interesting with the results we've generated.
+				Status print_status = PrintTopLabels(outputs, labels, frame);
+				if (!print_status.ok()) {
+					LOG(ERROR) << "Running print failed: " << print_status;
+					return -1;
+				}
+
+				// show image and labels
+				imshow( "Test", frame );
+#if 0
+				waitKey(30);
+#else
+				waitKey(5000);
+				break;
+			}
+			default:
+				break;
+		}
+#endif
+	}
 
   return 0;
 }

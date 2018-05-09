@@ -18,6 +18,7 @@ tf_cc_binary(
     srcs = [
         "main.cc",
     ],
+    copts = [ "-fexceptions", ],
     linkopts = select({
         "//tensorflow:android": [
             "-pie",
@@ -49,6 +50,7 @@ tf_cc_binary(
             "//tensorflow/core:lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:tensorflow",
+            "@opencv//:opencv",
         ],
     }),
 )
@@ -62,3 +64,4 @@ py_binary(
         "//tensorflow:tensorflow_py",
     ],
 )
+
