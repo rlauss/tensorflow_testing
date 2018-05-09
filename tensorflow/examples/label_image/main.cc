@@ -306,7 +306,7 @@ int main(int argc, char* argv[]) {
   bool self_test = false;
   string root_dir = "";
   std::vector<Flag> flag_list = {
-      Flag("image", &image, "image to be processed"),
+      /*Flag("image", &image, "image to be processed"),*/
       Flag("graph", &graph, "graph to be executed"),
       Flag("labels", &labels, "name of file containing labels"),
       Flag("input_width", &input_width, "resize image to this width in pixels"),
@@ -352,6 +352,8 @@ int main(int argc, char* argv[]) {
 		LOG(ERROR) << "VideoCapture not opened\n";
 		return -1;
 	}
+
+	std::cout << "press space to analyse the current image via tensorflow. q or esc to quit" << std::endl;
 
 	while (1) {
   	Mat frame;
